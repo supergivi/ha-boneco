@@ -4,6 +4,7 @@ import asyncio
 from collections.abc import Callable
 from datetime import timedelta
 import logging
+from types import MethodType
 
 from bleak_retry_connector import close_stale_connections_by_address
 
@@ -24,6 +25,44 @@ from .models import BonecoCombinedState
 _LOGGER = logging.getLogger(__name__)
 
 type BonecoConfigEntry = ConfigEntry[BonecoDataUpdateCoordinator]
+
+
+def _apply_pyboneco_workarounds(state: BonecoDeviceState) -> None:
+    """Apply workarounds for known upstream issues in pyboneco.
+
+    pyboneco==0.4.1 has a bug where BonecoDeviceState._prepare_reminder_date does
+    not return bytes for devices with service operating counters (e.g. H700 /
+    TOP_CLIMATE), which breaks writes with:
+
+        TypeError: can't concat NoneType to bytes
+
+    This patches the method only on the state instance and only when the bug is
+    detected, to avoid affecting other device types or future versions where the
+    bug is fixed.
+    """
+
+    if getattr(state, "_ha_boneco_workarounds_applied", False):
+        return
+
+    if not getattr(state, "has_service_operating_counter", False):
+        return
+
+    try:
+        prepare = getattr(state, "_prepare_reminder_date", None)
+        if prepare is not None and isinstance(prepare(0), (bytes, bytearray)):
+            return
+    except Exception:  # noqa: BLE001
+        # If we cannot detect the behavior, prefer applying the workaround to
+        # avoid losing write capabilities.
+        pass
+
+    def _prepare_reminder_date(self: BonecoDeviceState, value: int | None) -> bytes:
+        if value is None:
+            return BonecoDeviceState.RESET_DATE_BYTES
+        return int(value).to_bytes(4, byteorder="little")
+
+    state._prepare_reminder_date = MethodType(_prepare_reminder_date, state)
+    state._ha_boneco_workarounds_applied = True
 
 
 class BonecoDataUpdateCoordinator(DataUpdateCoordinator[BonecoCombinedState]):
@@ -95,6 +134,8 @@ class BonecoDataUpdateCoordinator(DataUpdateCoordinator[BonecoCombinedState]):
     async def _async_set_state(self):
         try:
             _LOGGER.debug("Sending new state = %s", vars(self._pending_state))
+            if self._pending_state is not None:
+                _apply_pyboneco_workarounds(self._pending_state)
             async with self._lock:
                 await self._client.connect()
                 await self._client.set_state(self._pending_state)
