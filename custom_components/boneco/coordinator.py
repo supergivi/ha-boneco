@@ -133,7 +133,7 @@ class BonecoDataUpdateCoordinator(DataUpdateCoordinator[BonecoCombinedState]):
 
     async def _async_set_state(self):
         try:
-            _LOGGER.debug("Sending new state = %s", vars(self._pending_state))
+            _LOGGER.debug("Sending new state = %s", self._pending_state)
             if self._pending_state is not None:
                 _apply_pyboneco_workarounds(self._pending_state)
             async with self._lock:
