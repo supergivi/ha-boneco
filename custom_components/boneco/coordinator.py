@@ -105,8 +105,8 @@ class BonecoDataUpdateCoordinator(DataUpdateCoordinator[BonecoCombinedState]):
         """Overwrite state for the device."""
         _LOGGER.debug(
             "Saving a new state %s instead of %s",
-            vars(new_state),
-            vars(self._last_state()),
+            new_state,
+            self._last_state(),
         )
         self._pending_state = new_state
         self._debounced_write.async_schedule_call()
@@ -159,8 +159,8 @@ class BonecoDataUpdateCoordinator(DataUpdateCoordinator[BonecoCombinedState]):
                 _LOGGER.debug(
                     "Fetched device name='%s', device info='%s', device state='%s'",
                     name,
-                    vars(info),
-                    vars(state),
+                    info,
+                    state,
                 )
                 if self.device_info is None:
                     self.device_info = dr.DeviceInfo(
